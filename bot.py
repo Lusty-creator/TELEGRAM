@@ -1,109 +1,265 @@
-
 import logging
 import os
 from collections import defaultdict
 
-import openai
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
-
-# Configuration de l'API OpenAI
-openai.api_key = os.environ.get("OPENAI_API_KEY")
-
-# Configuration du logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+from openai import OpenAI
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Update
 )
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
+
+# ==========================
+# CONFIGURATION
+# ==========================
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+
 logger = logging.getLogger(__name__)
 
-# Token du bot Telegram (à remplacer par le token fourni par l'utilisateur)
-TELEGRAM_BOT_TOKEN = "TELEGRAM_BOT_TOKEN"
+# ==========================
+# PERSONNALITÉS
+# ==========================
 
-# Définition des personnages/styles de conversation
 PERSONNALITES = {
     "serieux": {
-        "nom": "Assistant Sérieux",
-        "description": "Un assistant professionnel et factuel, répondant avec précision et clarté.",
-        "prompt_systeme": "Vous êtes un assistant professionnel et factuel. Répondez avec précision, clarté et concision. Votre objectif est d'informer et d'aider l'utilisateur de manière sérieuse."
+        "nom": "🎓 Assistant Sérieux",
+        "description": "Professionnel et factuel",
+        "prompt_systeme": "Tu es un assistant professionnel et précis."
     },
+
     "decontracte": {
-        "nom": "Ami Décontracté",
-        "description": "Un ami amical et informel, utilisant un langage courant et un ton léger.",
-        "prompt_systeme": "Vous êtes un ami décontracté et amical. Utilisez un langage informel, des expressions courantes et un ton léger. N'hésitez pas à faire des blagues ou des commentaires amusants."
+        "nom": "😎 Ami Décontracté",
+        "description": "Amical et cool",
+        "prompt_systeme": "Tu es un ami sympathique. Tutoiement obligatoire."
     },
+
     "poete": {
-        "nom": "Poète",
-        "description": "Un poète inspiré, répondant avec des vers, des métaphores et une touche artistique.",
-        "prompt_systeme": "Vous êtes un poète inspiré. Répondez toujours sous forme de poème, en utilisant des métaphores, des rimes et un langage évocateur. Exprimez-vous avec une touche artistique et émotionnelle."
+        "nom": "🌹 Poète",
+        "description": "Réponses poétiques",
+        "prompt_systeme": "Réponds toujours sous forme poétique."
     },
+
     "humoriste": {
-        "nom": "Humoriste",
-        "description": "Un humoriste plein d'esprit, répondant avec des blagues, des jeux de mots et un sens de l'autodérision.",
-        "prompt_systeme": "Vous êtes un humoriste. Votre but est de faire rire l'utilisateur avec des blagues, des jeux de mots et un sens de l'autodérision. Gardez un ton léger et amusant."
+        "nom": "😂 Humoriste",
+        "description": "Blagues et humour",
+        "prompt_systeme": "Ajoute une touche d'humour à chaque réponse."
     },
+
     "philosophe": {
-        "nom": "Philosophe",
-        "description": "Un philosophe réfléchi, explorant les questions profondes et offrant des perspectives nuancées.",
-        "prompt_systeme": "Vous êtes un philosophe. Répondez en explorant les questions profondes, en offrant des perspectives nuancées et en encourageant la réflexion. Utilisez un langage soutenu et conceptuel."
+        "nom": "🧠 Philosophe",
+        "description": "Réflexions profondes",
+        "prompt_systeme": "Réponds comme un philosophe."
     },
+
     "coach": {
-        "nom": "Coach Motivant",
-        "description": "Un coach inspirant, offrant des encouragements, des conseils pratiques et une attitude positive.",
-        "prompt_systeme": "Vous êtes un coach motivant. Offrez des encouragements, des conseils pratiques et une attitude positive. Aidez l'utilisateur à atteindre ses objectifs et à surmonter les défis."
+        "nom": "💪 Coach Motivant",
+        "description": "Motivation et énergie",
+        "prompt_systeme": "Réponds comme un coach motivant."
     }
 }
 
-# Dictionnaire pour stocker le style choisi par chaque utilisateur
-user_styles = defaultdict(lambda: "serieux") # Style par défaut
+# ==========================
+# MÉMOIRES
+# ==========================
 
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters, ContextTypes
+user_styles = defaultdict(lambda: "serieux")
+user_histories = defaultdict(list)
 
-# ... (reste du code)
+MAX_HISTORY = 10
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Envoie un message de bienvenue et présente les personnages disponibles."""
-    keyboard = []
-    for key, perso in PERSONNALITES.items():
-        keyboard.append([InlineKeyboardButton(perso["nom"], callback_data=f"style_{key}")])
+# ==========================
+# COMMANDES
+# ==========================
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                perso["nom"],
+                callback_data=f"style_{key}"
+            )
+        ]
+        for key, perso in PERSONNALITES.items()
+    ]
+
     await update.message.reply_text(
-        "Bonjour ! Je suis votre bot AI multi-personnalités. Choisissez un style de conversation ci-dessous ou utilisez la commande /style pour changer à tout moment.\n\n" +
-        "Voici les personnages disponibles :\n" +
-        "\n".join([f"- {p['nom']} : {p['description']}" for p in PERSONNALITES.values()])
-        , reply_markup=reply_markup
+        "👋 Bienvenue sur le Bot IA Multi-Personnalités.\n\n"
+        "Choisis un style :",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-async def style_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Affiche le menu de sélection de style via la commande /style."""
-    keyboard = []
-    for key, perso in PERSONNALITES.items():
-        keyboard.append([InlineKeyboardButton(perso["nom"], callback_data=f"style_{key}")])
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
+async def style(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await start(update, context)
+
+
+async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = update.effective_user.id
+
+    user_histories[user_id] = []
+
     await update.message.reply_text(
-        "Choisissez un nouveau style de conversation :", reply_markup=reply_markup
+        "🗑 Historique supprimé."
     )
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Gère les callbacks des boutons inline pour la sélection de style."""
+# ==========================
+# BOUTONS
+# ==========================
+
+async def button_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
     query = update.callback_query
+
     await query.answer()
 
-    style_key = query.data.split("_")[1]
-    user_styles[query.from_user.id] = style_key
-    await query.edit_message_text(text=f"Vous avez choisi le style : {PERSONNALITES[style_key]['nom']}")
+    style_key = query.data.replace(
+        "style_",
+        ""
+    )
 
-async def generate_response(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Génère une réponse de l'IA en fonction du style choisi par l'utilisateur."""
+    user_styles[query.from_user.id] = style_key
+
+    await query.edit_message_text(
+        f"✅ Style sélectionné : "
+        f"{PERSONNALITES[style_key]['nom']}"
+    )
+
+# ==========================
+# IA
+# ==========================
+
+async def handle_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
     user_id = update.effective_user.id
-    current_style_key = user_styles[user_id]
-    system_prompt = PERSONNALITES[current_style_key]["prompt_systeme"]
-    user_message = update.message.text
+    user_text = update.message.text
+
+    style = user_styles[user_id]
+
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id,
+        action="typing"
+    )
 
     try:
-        response = openai.chat.completions.create(
-            model="gpt-4.1-mini", # Ou un autre modèle OpenAI compatible
+
+        history = user_histories[user_id]
+
+        messages = [
+            {
+                "role": "system",
+                "content": PERSONNALITES[style]["prompt_systeme"]
+            }
+        ]
+
+        messages.extend(history)
+
+        messages.append(
+            {
+                "role": "user",
+                "content": user_text
+            }
+        )
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.8
+        )
+
+        answer = response.choices[0].message.content
+
+        history.append(
+            {
+                "role": "user",
+                "content": user_text
+            }
+        )
+
+        history.append(
+            {
+                "role": "assistant",
+                "content": answer
+            }
+        )
+
+        user_histories[user_id] = history[-MAX_HISTORY:]
+
+        await update.message.reply_text(answer)
+
+    except Exception as e:
+
+        logger.error(str(e))
+
+        await update.message.reply_text(
+            "❌ Erreur lors de la génération de la réponse."
+        )
+
+# ==========================
+# MAIN
+# ==========================
+
+def main():
+
+    application = (
+        Application.builder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .build()
+    )
+
+    application.add_handler(
+        CommandHandler("start", start)
+    )
+
+    application.add_handler(
+        CommandHandler("style", style)
+    )
+
+    application.add_handler(
+        CommandHandler("reset", reset)
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(button_callback)
+    )
+
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            handle_message
+        )
+    )
+
+    print("✅ Bot démarré")
+
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()            model="gpt-4.1-mini", # Ou un autre modèle OpenAI compatible
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
