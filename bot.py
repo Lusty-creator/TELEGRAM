@@ -17,7 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Token du bot Telegram (à remplacer par le token fourni par l'utilisateur)
-TELEGRAM_BOT_TOKEN = "8576498710:AAF9LeBEVTjet9QQjGr8976Mr2IzOLzbBus"
+TELEGRAM_BOT_TOKEN = "TELEGRAM_BOT_TOKEN"
 
 # Définition des personnages/styles de conversation
 PERSONNALITES = {
